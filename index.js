@@ -1,172 +1,175 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const mysql = require('mysql2/promise');
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 
 const port = 3000;
+let conn = null;
 
-let products = [
-    { id: 1, name: 'คีย์บอร์ด', stock: 20, min_alert: 5 },
-    { id: 2, name: 'เมาส์', stock: 3, min_alert: 5 }
-];
-let productCounter = 3;
+const initMySQL = async () => {
+    try {
+        conn = await mysql.createConnection({
+            host: 'localhost',
+            user: 'root',
+            password: 'root',
+            database: 'webstock',
+            port: 8700
+        });
+        console.log('Connected to MySQL database (webstock)');
+    } catch (err) {
+        console.error('Error connecting to MySQL:', err);
+    }
+}
 
-let transactions = [];
-let transactionCounter = 1;
+//GET ดึงสินค้า
+app.get('/api/products', async (req, res) => {
+    try {
+        const [results] = await conn.query('SELECT * FROM products');
+        res.json(results);
+    } catch (error) {
+        console.error('Error fetching products:', error);
+        res.status(500).json({ message: 'Error fetching products' });
+    }
+});
 
+//GET ดึงข้อมูลสินค้าตาม Id
+app.get('/api/products/:id', async (req, res) => {
+    try {
+        let id = req.params.id;
+        const [results] = await conn.query('SELECT * FROM products WHERE id = ?', [id]);
+        
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
+        }
+        res.json(results[0]);
+    } catch (error) {
+        console.error('Error fetching product:', error);
+        res.status(500).json({ message: 'Error fetching product' });
+    }
+});
 
-app.get('/api/products', (req, res) => {
-    const results = products.map(product => {
-        return {
-            ...product,
-            status: product.stock <= product.min_alert ? 'LOW STOCK' : 'OK'
+//POST เพิ่มสินค้าใหม่
+app.post('/api/products', async (req, res) => {
+    try {
+        let productData = req.body;
+
+        if (!productData.name) {
+            return res.status(400).json({ message: 'กรุณากรอกชื่อสินค้า' });
+        }
+
+        let newProduct = {
+            name: productData.name,
+            stock: productData.stock || 0,
+            min_alert: productData.min_alert || 5
         };
-    });
-    res.json(results);
-});
 
-app.get('/api/products/:id', (req, res) => {
-    let id = parseInt(req.params.id);
-    let product = products.find(p => p.id === id);
-    
-    if (!product) {
-        return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
+        const [results] = await conn.query('INSERT INTO products SET ?', newProduct);
+        res.status(201).json({
+            message: 'เพิ่มสินค้าสำเร็จ',
+            data: { id: results.insertId, newProduct }
+        });
+    } catch (error) {
+        console.error('Error adding product:', error);
+        res.status(500).json({ message: 'Error adding product' });
     }
-    res.json(product);
 });
 
-app.get('/api/transactions', (req, res) => {
-    res.json(transactions);
-});
+// PUT แก้ไขข้อมูลสินค้า
+app.put('/api/products/:id', async (req, res) => {
+    try {
+        let id = req.params.id;
+        let updateProduct = req.body;
 
-app.post('/api/products', (req, res) => {
-    let { name, stock, min_alert } = req.body;
+        const [check] = await conn.query('SELECT id FROM products WHERE id = ?', [id]);
+        if (check.length === 0) return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
 
-    if (!name) {
-        return res.status(400).json({ message: 'กรุณากรอกชื่อสินค้า' });
+        const [results] = await conn.query('UPDATE products SET ? WHERE id = ?', [updateProduct, id]);
+        res.json({
+            message: 'อัปเดตข้อมูลสินค้าสำเร็จ',
+            affectedRows: results.affectedRows
+        });
+    } catch (error) {
+        console.error('Error updating product:', error);
+        res.status(500).json({ message: 'Error updating product' });
     }
-
-    let newProduct = {
-        id: productCounter++,
-        name: name,
-        stock: stock || 0,
-        min_alert: min_alert || 5
-    };
-
-    products.push(newProduct);
-    res.status(201).json({
-        message: 'เพิ่มสินค้าใหม่สำเร็จ',
-        product: newProduct
-    });
 });
 
-app.put('/api/products/:id', (req, res) => {
-    let id = parseInt(req.params.id);
-    let { name, stock, min_alert } = req.body;
+// DELETE ลบสินค้า
+app.delete('/api/products/:id', async (req, res) => {
+    try {
+        let id = req.params.id;
 
-    let index = products.findIndex(p => p.id === id);
-    if (index === -1) {
-        return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
+        const [check] = await conn.query('SELECT id FROM products WHERE id = ?', [id]);
+        if (check.length === 0) return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
+
+        const [results] = await conn.query('DELETE FROM products WHERE id = ?', [id]);
+        res.json({  
+            message: 'ลบสินค้าสำเร็จ',
+            affectedRows: results.affectedRows
+        });
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        res.status(500).json({ message: 'Error deleting product' });
     }
-
-    if (!name || stock === undefined || min_alert === undefined) {
-        return res.status(400).json({ message: 'PUT ต้องส่งข้อมูลให้ครบ (name, stock, min_alert)' });
-    }
-
-    products[index] = { id: id, name: name, stock: stock, min_alert: min_alert };
-    
-    res.json({
-        message: 'อัปเดตสินค้าสำเร็จ (PUT)',
-        product: products[index]
-    });
 });
 
-app.patch('/api/products/:id', (req, res) => {
-    let id = parseInt(req.params.id);
-    let updateData = req.body;
-
-    let index = products.findIndex(p => p.id === id);
-    if (index === -1) {
-        return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
-    }
-
-    if (updateData.name !== undefined) products[index].name = updateData.name;
-    if (updateData.stock !== undefined) products[index].stock = updateData.stock;
-    if (updateData.min_alert !== undefined) products[index].min_alert = updateData.min_alert;
-
-    res.json({
-        message: 'อัปเดตสินค้าสำเร็จ (PATCH)',
-        product: products[index]
-    });
-});
-
-app.delete('/api/products/:id', (req, res) => {
-    let id = parseInt(req.params.id);
-    let index = products.findIndex(p => p.id === id);
-    
-    if (index === -1) {
-        return res.status(404).json({ message: 'ไม่พบสินค้านี้' });
-    }
-
-    let deletedProduct = products.splice(index, 1);
-    
-    res.json({
-        message: 'ลบสินค้าสำเร็จ',
-        product: deletedProduct[0]
-    });
-});
-
-app.post('/api/transactions', (req, res) => {
+// POST บันทึกเข้า-ออก
+app.post('/api/transactions', async (req, res) => {
     try {
         let { product_id, type, quantity } = req.body;
-        
-        product_id = parseInt(product_id);
-        quantity = parseInt(quantity);
 
         if (!product_id || !type || !quantity) {
             return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน (product_id, type, quantity)' });
         }
 
-        let selectedIndex = products.findIndex(p => p.id === product_id);
-        if (selectedIndex === -1) {
+        const [products] = await conn.query('SELECT * FROM products WHERE id = ?', [product_id]);
+        if (products.length === 0) {
             return res.status(404).json({ message: 'ไม่พบรหัสสินค้านี้' });
         }
+        let product = products[0];
 
+        let newStock = product.stock;
         if (type === 'IN') {
-            products[selectedIndex].stock += quantity;
+            newStock += parseInt(quantity);
         } else if (type === 'OUT') {
-            if (products[selectedIndex].stock < quantity) {
+            if (product.stock < quantity) {
                 return res.status(400).json({ message: 'จำนวนสต๊อกไม่เพียงพอให้เบิกออก' });
             }
-            products[selectedIndex].stock -= quantity;
+            newStock -= parseInt(quantity);
         } else {
-            return res.status(400).json({ message: 'ประเภทต้องเป็น IN หรือ OUT เท่านั้น' });
+            return res.status(400).json({ message: "type ต้องเป็น 'IN' หรือ 'OUT' เท่านั้น" });
         }
 
-        const newTransaction = {
-            id: transactionCounter++,
+        // บันทึก transaction
+        await conn.query('BEGIN');
+        
+        await conn.query('INSERT INTO transactions SET ?', {
             product_id: product_id,
             type: type,
-            quantity: quantity,
-            transaction_date: new Date()
-        };
-        transactions.push(newTransaction);
+            quantity: quantity
+        });
 
-        res.json({
-            message: 'บันทึกรายการสำเร็จ',
-            updatedProduct: products[selectedIndex],
-            transaction: newTransaction
+        // 4. อัปเดตสต๊อกในตาราง products
+        await conn.query('UPDATE products SET stock = ? WHERE id = ?', [newStock, product_id]);
+        
+        await conn.query('COMMIT');
+
+        res.status(201).json({
+            message: 'บันทึกรายการและอัปเดตสต๊อกสำเร็จ',
+            new_stock: newStock
         });
 
     } catch (error) {
+        await conn.query('ROLLBACK');
         console.error('Error handling transaction:', error);
-        res.status(500).json({ message: 'Internal Server Error' });
+        res.status(500).json({ message: 'Error handling transaction' });
     }
 });
 
-app.listen(port, () => {
-    console.log(`Inventory Server is running on http://localhost:${port}`);
+app.listen(port, async () => {
+    await initMySQL();
+    console.log(`Inventory API is running on http://localhost:${port}`);
 });
