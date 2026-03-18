@@ -10,9 +10,9 @@ const pool = mysql.createPool({
 
 pool.getConnection((err, connection) => {
   if (err) {
-    console.error("เชื่อมต่อ webstock ไม่สำเร็จ:", err.message);
+    console.error("Unable to connect to webstock:", err.message);
   } else {
-    console.log("เชื่อมต่อฐานข้อมูล webstock เรียบร้อยแล้ว!");
+    console.log("Connected to Webstock successfully.");
     connection.release();
   }
 });
