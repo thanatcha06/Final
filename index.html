@@ -2,93 +2,163 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>ระบบสต๊อกสินค้า Webstock</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 800px; margin: auto; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background: #007bff; color: white; }
-        .btn { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; color: white; }
-        .btn-add { background: #28a745; margin-bottom: 10px; }
-        .btn-delete { background: #dc3545; }
-        .low-stock { color: red; font-weight: bold; }
-    </style>
+    <title>ระบบจัดการสต๊อกสินค้า</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="card">
-    <h1>📦 ระบบจัดการสต๊อก (Webstock)</h1>
-    
-    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee;">
-        <h3>➕ เพิ่มสินค้าใหม่</h3>
-        <input type="text" id="newName" placeholder="ชื่อสินค้า">
-        <input type="number" id="newStock" placeholder="จำนวน" style="width: 80px;">
-        <input type="number" id="newMin" placeholder="ขั้นต่ำ" style="width: 80px;">
-        <button class="btn btn-add" onclick="addProduct()">เพิ่มสินค้า</button>
+<div class="container">
+    <h1>📦 ระบบจัดการสต๊อกสินค้า</h1>
+
+    <div class="form-group">
+        <h2>➕ เพิ่มสินค้าใหม่</h2>
+        <input type="text" id="newName" placeholder="ชื่อสินค้า (เช่น หน้าจอ)">
+        <input type="number" id="newStock" placeholder="สต๊อกเริ่มต้น" value="0" style="width: 100px;">
+        <input type="number" id="newMinAlert" placeholder="เตือนเมื่อเหลือ" value="5" style="width: 100px;">
+        <button class="btn-add" onclick="addProduct()">บันทึกสินค้าใหม่</button>
     </div>
 
+    <div class="form-group">
+        <h2>🔄 รับเข้า / เบิกออกสินค้า</h2>
+        <input type="number" id="txProductId" placeholder="รหัสสินค้า (ID)" style="width: 120px;">
+        <select id="txType">
+            <option value="IN">รับเข้า (IN)</option>
+            <option value="OUT">เบิกออก (OUT)</option>
+        </select>
+        <input type="number" id="txQty" placeholder="จำนวน" style="width: 100px;">
+        <button class="btn-tx" onclick="addTransaction()">บันทึกรายการ</button>
+    </div>
+
+    <h2>📋 รายการสินค้าคงเหลือ</h2>
     <table>
         <thead>
             <tr>
                 <th>ID</th>
                 <th>ชื่อสินค้า</th>
-                <th>คงเหลือ</th>
+                <th>สต๊อก (Stock)</th>
+                <th>แจ้งเตือน (Min)</th>
                 <th>สถานะ</th>
                 <th>จัดการ</th>
             </tr>
         </thead>
-        <tbody id="productTable"></tbody>
+        <tbody id="productTable">
+            <tr><td colspan="6">กำลังโหลดข้อมูล...</td></tr>
+        </tbody>
     </table>
 </div>
 
 <script>
-    const API_URL = 'http://localhost:3000/api/products';
+    // อย่าลืมเช็ค Port ให้ตรงกับ Backend ของคุณนะครับ (3000 หรือ 8000)
+    const API_URL = 'http://localhost:3000/api'; 
 
-    // 1. ดึงข้อมูลมาโชว์
     async function loadProducts() {
-        const res = await fetch(API_URL);
-        const data = await res.json();
-        const tbody = document.getElementById('productTable');
-        tbody.innerHTML = '';
+        try {
+            const response = await fetch(`${API_URL}/products`);
+            const products = await response.json();
+            
+            const tableBody = document.getElementById('productTable');
+            tableBody.innerHTML = ''; 
 
-        data.forEach(p => {
-            tbody.innerHTML += `
-                <tr>
-                    <td>${p.id}</td>
-                    <td>${p.name}</td>
-                    <td>${p.stock}</td>
-                    <td class="${p.status === 'LOW STOCK' ? 'low-stock' : ''}">${p.status}</td>
-                    <td>
-                        <button class="btn btn-delete" onclick="deleteProduct(${p.id})">ลบ</button>
-                    </td>
-                </tr>
-            `;
-        });
+            if(products.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6">ยังไม่มีข้อมูลสินค้า</td></tr>';
+                return;
+            }
+
+            products.forEach(p => {
+                let statusText = "🟢 ปกติ";
+                let rowClass = "";
+                if (p.stock <= p.min_alert) {
+                    statusText = "🔴 ใกล้หมด!";
+                    rowClass = "low-stock"; 
+                }
+
+                const row = `
+                    <tr class="${rowClass}">
+                        <td>${p.id}</td>
+                        <td>${p.name}</td>
+                        <td style="font-size: 18px; font-weight: bold;">${p.stock}</td>
+                        <td>${p.min_alert}</td>
+                        <td>${statusText}</td>
+                        <td>
+                            <button class="btn-delete" onclick="deleteProduct(${p.id})">ลบ</button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+        } catch (error) {
+            console.error("Error:", error);
+            document.getElementById('productTable').innerHTML = '<tr><td colspan="6" style="color:red;">ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่า Backend รันอยู่หรือไม่</td></tr>';
+        }
     }
 
-    // 2. ฟังก์ชันเพิ่มสินค้า
     async function addProduct() {
         const name = document.getElementById('newName').value;
         const stock = document.getElementById('newStock').value;
-        const min_alert = document.getElementById('newMin').value;
+        const min_alert = document.getElementById('newMinAlert').value;
 
-        if(!name) return alert('กรุณาใส่ชื่อสินค้า');
+        if (!name) return alert('กรุณากรอกชื่อสินค้า');
 
-        await fetch(API_URL, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name, stock: parseInt(stock), min_alert: parseInt(min_alert) })
-        });
-        
-        loadProducts(); // รีโหลดตาราง
+        try {
+            const response = await fetch(`${API_URL}/products`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, stock, min_alert })
+            });
+            
+            if (response.ok) {
+                alert('เพิ่มสินค้าสำเร็จ!');
+                document.getElementById('newName').value = ''; 
+                loadProducts(); 
+            } else {
+                const err = await response.json();
+                alert('ข้อผิดพลาด: ' + err.message);
+            }
+        } catch (error) {
+            alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+        }
     }
 
-    // 3. ฟังก์ชันลบสินค้า
+    async function addTransaction() {
+        const product_id = document.getElementById('txProductId').value;
+        const type = document.getElementById('txType').value;
+        const quantity = document.getElementById('txQty').value;
+
+        if (!product_id || !quantity) return alert('กรุณากรอก ID สินค้า และ จำนวน');
+
+        try {
+            const response = await fetch(`${API_URL}/transactions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product_id, type, quantity })
+            });
+            
+            const result = await response.json();
+            if (response.ok) {
+                alert('อัปเดตสต๊อกสำเร็จ!');
+                document.getElementById('txQty').value = ''; 
+                loadProducts(); 
+            } else {
+                alert('ข้อผิดพลาด: ' + result.message);
+            }
+        } catch (error) {
+            alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+        }
+    }
+
     async function deleteProduct(id) {
-        if(confirm('ยืนยันการลบ?')) {
-            await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-            loadProducts();
+        if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบสินค้า ID: ${id} ?`)) return;
+
+        try {
+            const response = await fetch(`${API_URL}/products/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                loadProducts();
+            } else {
+                const err = await response.json();
+                alert('ลบไม่สำเร็จ: ' + err.message);
+            }
+        } catch (error) {
+            alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
         }
     }
 
