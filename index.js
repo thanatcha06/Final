@@ -77,7 +77,7 @@ app.post('/api/products', async (req, res) => {
     }
 });
 
-// PUT แก้ไขข้อมูลสินค้า
+//PUT แก้ไขข้อมูลสินค้า
 app.put('/api/products/:id', async (req, res) => {
     try {
         let id = req.params.id;
@@ -97,7 +97,7 @@ app.put('/api/products/:id', async (req, res) => {
     }
 });
 
-// DELETE ลบสินค้า
+//DELETE ลบสินค้า
 app.delete('/api/products/:id', async (req, res) => {
     try {
         let id = req.params.id;
@@ -116,7 +116,7 @@ app.delete('/api/products/:id', async (req, res) => {
     }
 });
 
-// POST บันทึกเข้า-ออก
+//POST บันทึกสินค้าเข้า-ออก
 app.post('/api/transactions', async (req, res) => {
     try {
         let { product_id, type, quantity } = req.body;
@@ -143,7 +143,7 @@ app.post('/api/transactions', async (req, res) => {
             return res.status(400).json({ message: "type ต้องเป็น 'IN' หรือ 'OUT' เท่านั้น" });
         }
 
-        // บันทึก transaction
+        //transaction
         await conn.query('BEGIN');
         
         await conn.query('INSERT INTO transactions SET ?', {
@@ -152,7 +152,7 @@ app.post('/api/transactions', async (req, res) => {
             quantity: quantity
         });
 
-        // 4. อัปเดตสต๊อกในตาราง products
+        // อัปเดตสต๊อกในตาราง products
         await conn.query('UPDATE products SET stock = ? WHERE id = ?', [newStock, product_id]);
         
         await conn.query('COMMIT');
