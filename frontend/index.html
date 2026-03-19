@@ -13,7 +13,7 @@
     <div id="notificationArea"></div>
 
     <div class="form-group">
-        <h2> เพิ่มสินค้าใหม่</h2>
+        <h2>เพิ่มสินค้าใหม่</h2>
         <input type="text" id="newName" placeholder="ชื่อสินค้า (เช่น หน้าจอ)">
         <input type="number" id="newStock" placeholder="สต๊อกเริ่มต้น" value="0" style="width: 100px;">
         <input type="number" id="newMinAlert" placeholder="เตือนเมื่อเหลือ" value="5" style="width: 100px;">
@@ -21,7 +21,7 @@
     </div>
 
     <div class="form-group">
-        <h2>🔄 รับเข้า / เบิกออกสินค้า</h2>
+        <h2>รับเข้า / เบิกออกสินค้า</h2>
         <input type="number" id="txProductId" placeholder="รหัสสินค้า (ID)" style="width: 120px;">
         <select id="txType">
             <option value="IN">รับเข้า (IN)</option>
@@ -35,7 +35,7 @@
     <table>
         <thead>
             <tr>
-                <th>ID</th>
+                <th>ลำดับ</th>  
                 <th>ชื่อสินค้า</th>
                 <th>สต๊อก (Stock)</th>
                 <th>แจ้งเตือน (Min)</th>
@@ -44,9 +44,46 @@
             </tr>
         </thead>
         <tbody id="productTable">
-            <tr><td colspan="6">กำลังโหลดข้อมูล...</td></tr>
+            <tr><td colspan="6">กำลังโหลดข้อมูล</td></tr>
         </tbody>
     </table>
+
+    <div class="form-group" style="margin-top: 40px;">
+        <h2>รายงานสรุปยอดขาย / เบิกออก (OUT)</h2>
+        
+        <div class="summary-cards">
+            <div class="card card-info">
+                <h3>ยอดขายวันนี้</h3>
+                <p id="todaySales">0 ชิ้น</p>
+            </div>
+            <div class="card card-success">
+                <h3>ยอดขายเดือนนี้</h3>
+                <p id="monthSales">0 ชิ้น</p>
+            </div>
+        </div>
+
+        <h3>ประวัติการทำรายการ (เข้า-ออก)</h3>
+        <div class="filter-buttons">
+            <button class="btn-tx" onclick="loadTransactions('ALL')">ดูทั้งหมด</button>
+            <button class="btn-add" onclick="loadTransactions('IN')">เฉพาะรับเข้า (IN)</button>
+            <button class="btn-delete" onclick="loadTransactions('OUT')">เฉพาะเบิกออก (OUT)</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>วัน/เวลา</th>
+                    <th>ประเภท</th>
+                    <th>ชื่อสินค้า</th>
+                    <th>จำนวน</th>
+                </tr>
+            </thead>
+            <tbody id="transactionTable">
+                <tr><td colspan="4">กำลังโหลดประวัติ...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
 </div>
 
 <script>
@@ -69,23 +106,23 @@
                 return;
             }
 
-            products.forEach(p => {
-                let statusText = "ปกติ";
+            products.forEach((p, index) => {
+                let statusText = "มีสินค้า";
                 let rowClass = "";
                 
                 if (p.stock === 0) {
-                    statusText = "หมดสต๊อก!";
+                    statusText = "หมดstock";
                     rowClass = "low-stock"; 
                     outOfStock.push(p.name);
                 } else if (p.stock <= p.min_alert) {
-                    statusText = "ใกล้หมด!";
+                    statusText = "สินค้าใกล้หมด";
                     rowClass = "low-stock"; 
                     lowStock.push(p.name);
                 }
 
                 const row = `
                     <tr class="${rowClass}">
-                        <td>${p.id}</td>
+                        <td>${index + 1}</td> 
                         <td>${p.name}</td>
                         <td style="font-size: 18px; font-weight: bold;">${p.stock}</td>
                         <td>${p.min_alert}</td>
@@ -102,14 +139,14 @@
             if (outOfStock.length > 0) {
                 alertHtml += `
                     <div class="alert-box alert-danger">
-                         <b>สินค้าหมดสต๊อก (กรุณาสั่งเพิ่มด่วน):</b> ${outOfStock.join(', ')}
+                        <b>สินค้าหมดStock กรุณาสั่งเพิ่ม :</b> ${outOfStock.join(', ')}
                     </div>
                 `;
             }
             if (lowStock.length > 0) {
                 alertHtml += `
                     <div class="alert-box alert-warning">
-                        <b>สินค้าใกล้หมด:</b> ${lowStock.join(', ')}
+                        <b>สินค้าใกล้หมด :</b> ${lowStock.join(', ')}
                     </div>
                 `;
             }
@@ -118,6 +155,71 @@
         } catch (error) {
             console.error("Error:", error);
             document.getElementById('productTable').innerHTML = '<tr><td colspan="6" style="color:red;">ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่า Backend รันอยู่หรือไม่</td></tr>';
+        }
+    }
+
+    async function loadTransactions(filterType = 'ALL') {
+        try {
+            const response = await fetch(`${API_URL}/transactions`);
+            const transactions = await response.json();
+            
+            const tableBody = document.getElementById('transactionTable');
+            tableBody.innerHTML = '';
+
+            let todaySales = 0;
+            let monthSales = 0;
+            const today = new Date();
+
+            //คำนวณยอดขายรายวันและรายเดือน
+            transactions.forEach(t => {
+                if (t.type === 'OUT') {
+                    const txDate = t.transaction_date ? new Date(t.transaction_date) : new Date();
+                    
+                    if (txDate.toDateString() === today.toDateString()) {
+                        todaySales += parseInt(t.quantity);
+                    }
+                    if (txDate.getMonth() === today.getMonth() && txDate.getFullYear() === today.getFullYear()) {
+                        monthSales += parseInt(t.quantity);
+                    }
+                }
+            });
+
+            document.getElementById('todaySales').innerText = todaySales + ' ชิ้น';
+            document.getElementById('monthSales').innerText = monthSales + ' ชิ้น';
+
+            const filteredTx = filterType === 'ALL' 
+                ? transactions 
+                : transactions.filter(t => t.type === filterType);
+
+            if(filteredTx.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="4">ยังไม่มีประวัติการทำรายการ</td></tr>';
+                return;
+            }
+
+            filteredTx.forEach(t => {
+                const txDate = t.transaction_date ? new Date(t.transaction_date) : new Date();
+                const dateStr = txDate.toLocaleString('th-TH'); 
+                
+                const typeHtml = t.type === 'IN' 
+                    ? '<span style="color: #28a745; font-weight: bold;">รับเข้า</span>'
+                    : '<span style="color: #dc3545; font-weight: bold;">เบิกออก</span>';
+
+                const pName = t.product_name || `รหัสสินค้า ${t.product_id}`;
+
+                const row = `
+                    <tr>
+                        <td>${dateStr}</td>
+                        <td>${typeHtml}</td>
+                        <td>${pName}</td>
+                        <td style="font-size: 16px; font-weight: bold;">${t.quantity}</td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+
+        } catch (error) {
+            console.error("Error:", error);
+            document.getElementById('transactionTable').innerHTML = '<tr><td colspan="4" style="color:red;">ไม่สามารถโหลดข้อมูลประวัติได้</td></tr>';
         }
     }
 
@@ -136,7 +238,7 @@
             });
             
             if (response.ok) {
-                alert('เพิ่มสินค้าสำเร็จ!');
+                alert('เพิ่มสินค้าสำเร็จ');
                 document.getElementById('newName').value = ''; 
                 loadProducts(); 
             } else {
@@ -153,7 +255,7 @@
         const type = document.getElementById('txType').value;
         const quantity = document.getElementById('txQty').value;
 
-        if (!product_id || !quantity) return alert('กรุณากรอก ID สินค้า และ จำนวน');
+        if (!product_id || !quantity) return alert('กรุณากรอก ID สินค้าและจำนวนสินค้า');
 
         try {
             const response = await fetch(`${API_URL}/transactions`, {
@@ -164,9 +266,10 @@
             
             const result = await response.json();
             if (response.ok) {
-                alert('อัปเดตสต๊อกสำเร็จ!');
+                alert('อัปเดตสต๊อกสำเร็จ');
                 document.getElementById('txQty').value = ''; 
                 loadProducts(); 
+                loadTransactions();
             } else {
                 alert('ข้อผิดพลาด: ' + result.message);
             }
@@ -192,6 +295,7 @@
     }
 
     loadProducts();
+    loadTransactions();
 </script>
 </body>
 </html>
